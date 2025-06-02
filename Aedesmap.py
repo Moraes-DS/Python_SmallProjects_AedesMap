@@ -1,7 +1,10 @@
 # Aedesmap_V19.py
 # ----------------------------------------------------------------
-# Versão V19: adiciona geocodificação de registros sem latitude/longitude,
-# mantendo todas as funcionalidades anteriores (filtro de período, heatmap, tabela).
+# Versão V19: além das funcionalidades existentes (heatmap, 
+# marcadores, tabela de bairros, commit Git), agora:
+#  - normaliza nomes de distritos (removendo acentos),
+#  - usa predicate="intersects" no spatial join
+#  - aplica um buffer minúsculo em pontos para capturar bordas.
 # ----------------------------------------------------------------
 
 import argparse
@@ -10,11 +13,12 @@ import geopandas as gpd
 import folium
 from folium.plugins import HeatMap
 from datetime import datetime, timedelta
-
-# → Novas dependências para geocodificação
 from geopy.geocoders import Nominatim
 from geopy.extra.rate_limiter import RateLimiter
+import unicodedata
 import time
+import os
+import git
 
 OCORRE_JSON = "ocorrencias_SP_chatbot_REAL_v5.json"
 UBS_GEOJSON = "ubs_SP_oficiais.geojson"
@@ -29,7 +33,7 @@ gradient     = {
 }
 radius       = 35
 blur         = 18
-min_opacity  = 0.1   # variável continua definida, mas no HeatMap usaremos 0.1 conforme V17
+min_opacity  = 0.1   # conforme V17
 
 #
 # ➤ 0️⃣: PARSE DOS ARGUMENTOS DE PERÍODO
@@ -57,59 +61,59 @@ parser.add_argument(
 )
 args = parser.parse_args()
 
+#
+# Função auxiliar para normalizar texto (remover acentos, converter para caixa alta)
+#
+def normalize_str(s):
+    return (
+        unicodedata.normalize("NFKD", str(s))
+        .encode("ASCII", "ignore")
+        .decode("ASCII", "ignore")
+        .upper()
+    )
+
 # 1️⃣ LEITURA DOS DADOS DE OCORRÊNCIA
 df = pd.read_json(OCORRE_JSON)
 
 # ——————————————————————————————————————————
 # 1a️⃣ Geocodificação de registros sem Latitude/Longitude
 # ----------------------------------------------------------------
-# Verifica se existe coluna "Endereco" e se “Latitude” ou “Longitude” estão ausentes (NaN ou None).
-# Para cada linha sem coordenadas, tenta geocodificar via Nominatim a partir do campo "Endereco",
-# atribuindo latitude e longitude ao DataFrame.
-#
 if "Endereco" not in df.columns:
-    raise ValueError("Coluna 'Endereco' não encontrada no JSON de ocorrências, necessária para geocodificação.")
+    raise ValueError("Coluna 'Endereco' não encontrada no JSON de ocorrências.")
 
-# Inicializa o geocodificador com RateLimiter para evitar bloqueios por excesso de requisições.
 geolocator = Nominatim(user_agent="aedesmap_geocoder")
 geocode = RateLimiter(geolocator.geocode, min_delay_seconds=1)
 
-# Se não houver coluna "Latitude" ou "Longitude", cria-as preenchidas com NaN para uniformizar.
 if "Latitude" not in df.columns:
     df["Latitude"] = pd.NA
 if "Longitude" not in df.columns:
     df["Longitude"] = pd.NA
 
-# Itera sobre as linhas que necessitam de geocodificação
+# Itera apenas sobre linhas sem coordenadas
 for idx, row in df[df["Latitude"].isna() | df["Longitude"].isna()].iterrows():
     endereco = row["Endereco"]
     if pd.isna(endereco) or endereco.strip() == "":
-        # Se não houver endereço, pula este registro
         continue
     try:
         loc = geocode(endereco)
     except Exception:
         loc = None
-    # Se obteve resultado, preenche colunas
     if loc:
         df.at[idx, "Latitude"] = loc.latitude
         df.at[idx, "Longitude"] = loc.longitude
-    # Pequena pausa para evitar sobrecarga caso RateLimiter não funcione como esperado
     time.sleep(0.2)
 
-# 1b️⃣ Garante que a coluna Data_interacao seja datetime
+# 1b️⃣ Garantir Data_interacao como datetime
 if "Data_interacao" not in df.columns:
     raise ValueError("Não encontrei a coluna 'Data_interacao' no JSON de ocorrências.")
 df["Data_interacao"] = pd.to_datetime(df["Data_interacao"])
 
 # 2️⃣ APLICAR FILTRO POR PERÍODO
-# Se passaram --ultimos_dias, usamos esse filtro e ignoramos inicio/fim
 if args.ultimos_dias is not None:
     hoje = datetime.today().date()
     inicio_data = hoje - timedelta(days=args.ultimos_dias - 1)
     df = df[df["Data_interacao"].dt.date >= inicio_data]
 else:
-    # Se não, podemos ter tanto --inicio quanto --fim — ambos opcionais
     if args.inicio:
         try:
             dt_inicio = pd.to_datetime(args.inicio).normalize()
@@ -123,26 +127,23 @@ else:
             raise ValueError("Parâmetro --fim deve estar no formato YYYY-MM-DD.")
         df = df[df["Data_interacao"] < dt_fim]
 
-# Após filtrar, podemos continuar normalmente (se df ficar vazio, o mapa ficará vazio mas sem erro).
-
 # 3️⃣ LEITURA DAS UBS GEOJSON
 gdfU = gpd.read_file(UBS_GEOJSON)
 
 # 4️⃣ PREPARAÇÃO DO SHAPEFILE DE DISTRITOS (BAIRROS)
 gdf_dst_full = gpd.read_file(DST_SHP).set_crs(31983).to_crs(4326)
 
-# Nome da coluna que identifica o distrito no shapefile (pode variar)
-district_name_column = "ds_nome"
+# Normaliza o nome do distrito para remover acento
+gdf_dst_full["ds_nome_norm"] = gdf_dst_full["ds_nome"].apply(normalize_str)
 
-TARGETS = ["CAMBUCI", "ACLIMAÇÃO", "LIBERDADE", "IPIRANGA"]
+# Definir quais bairros queremos
+TARGETS = ["CAMBUCI", "ACLIMACAO", "LIBERDADE", "IPIRANGA"]
 
-# Filtrar apenas esses quatro bairros
+# Filtrar apenas esses quatro (já normalizados)
 gdf_bairros = (
-    gdf_dst_full[
-        gdf_dst_full[district_name_column]
-        .str.upper()
-        .isin([t.upper() for t in TARGETS])
-    ][[district_name_column, "geometry"]]
+    gdf_dst_full[gdf_dst_full["ds_nome_norm"].isin(TARGETS)]
+    .rename(columns={"ds_nome_norm": "bairro"})
+    .loc[:, ["bairro", "geometry"]]
     .copy()
 )
 
@@ -155,21 +156,19 @@ m = folium.Map(
 )
 
 # 6️⃣ HEATMAP POR DOENÇA
-#    - Se df estiver vazio, o for simplesmente não adicionará camadas.
 for doenca, sub in df.groupby("Doenca_suspeita"):
     pts = sub[["Latitude", "Longitude"]].values.tolist()
-    pts = [p + [1] for p in pts]  # cada ponto vem com peso 1
+    pts = [p + [1] for p in pts]
     HeatMap(
         pts,
         name=f"{doenca} ({len(pts)})",
         gradient=gradient,
         radius=radius,
         blur=blur,
-        min_opacity=0.1,   # exato como estava no V17 (não alteramos para min_opacity=min_opacity)
+        min_opacity=0.1,
     ).add_to(m)
 
 # 7️⃣ MARCADORES DE UBS PRÓXIMAS
-#    - transforma df em GeoSeries apenas para criar o buffer (~2km ≈ 0.02°)
 if not df.empty:
     occ_pts = gpd.GeoSeries(
         gpd.points_from_xy(df.Longitude, df.Latitude),
@@ -184,36 +183,37 @@ if not df.empty:
             icon=folium.Icon(color="green", icon="plus-sign")
         ).add_to(m)
 else:
-    # Se não há ocorrências no período, não colocamos marcadores (mantemos a variável, mas vazia)
     gdfU_vis = gpd.GeoDataFrame(columns=gdfU.columns)
 
 # ----------------------------------------------------------------
 # 8️⃣ CONTAGEM “OCORRÊNCIAS POR BAIRRO” VIA SPATIAL JOIN
 # ----------------------------------------------------------------
+tabela_contagens = {}
 if not df.empty:
+    # Primeiro, criamos GeoDataFrame com buffer minúsculo para minimizar erros de borda
     gdf_occ = gpd.GeoDataFrame(
         df,
         geometry=gpd.points_from_xy(df.Longitude, df.Latitude),
         crs="EPSG:4326"
     )
+    # Aplica um buffer de 0.0001° (~11m) para capturar pontos colados na borda
+    gdf_occ["geometry_buffered"] = gdf_occ.geometry.buffer(0.0001)
+
     joined = gpd.sjoin(
-        gdf_occ,
-        gdf_bairros.rename(columns={district_name_column: "bairro"}),
+        gdf_occ.set_geometry("geometry_buffered"),
+        gdf_bairros,
         how="left",
-        predicate="within",
+        predicate="intersects",
     )
     contagem_bairros = joined["bairro"].value_counts(dropna=False).to_dict()
 else:
     contagem_bairros = {}
 
-# Montar dicionário garantindo todos os quatro bairros
-tabela_contagens = {}
+# Garantir que aparece cada bairro, mesmo que zero
 for b in TARGETS:
     tabela_contagens[b] = int(contagem_bairros.get(b, 0))
 
-# ----------------------------------------------------------------
 # 9️⃣ CRIA O SNIPPET (HTML) FIXO COM A TABELA + LINHA TOTAL
-# ----------------------------------------------------------------
 html_table = """
 <div style="
     position: fixed;
@@ -232,7 +232,6 @@ html_table = """
       <th style="padding: 2px 6px; border-bottom: 1px solid #666;">Qtd.</th>
     </tr>
 """
-# Linhas individuais para cada bairro
 for b in TARGETS:
     qtd = tabela_contagens[b]
     html_table += f"""
@@ -242,7 +241,7 @@ for b in TARGETS:
     </tr>
     """
 
-# Linha “Total” ao final da tabela
+# Linha “Total”
 total_geral = sum(tabela_contagens.values())
 html_table += f"""
     <tr>
@@ -260,29 +259,18 @@ m.get_root().html.add_child(Element(html_table))
 
 # 🔟 LayerControl e salvamento
 folium.LayerControl().add_to(m)
-# Note que alteramos o nome do arquivo de saída apenas para distinguir a versão de período:
 m.save("index.html")
 print("✔  index.html pronto — abra no navegador.")
 
-# ------------------------------------------------------------------------------------------
-# 11 - COMMITA AUTOMATICAMENTE NO GIT PARA CAPTURA PELO VERCEL
-# ------------------------------------------------------------------------------------------
-
-import os
-import git
-
+# ------------------------------------------------
+# 11 - COMMIT AUTOMÁTICO NO GIT PARA VERCEL
+# ------------------------------------------------
 repo_path = "D:/DOCUMENTOS/GITHUB/AEDESMAP"
 html_file = "index.html"
 
-# Inicializa o repositório Git local
 repo = git.Repo(repo_path)
-
-# Adiciona o arquivo ao commit
 repo.index.add([html_file])
 repo.index.commit("Atualizando mapa de calor")
-
-# Faz o push para o repositório remoto
 origin = repo.remote(name="origin")
 origin.push()
-
 print("HTML atualizado no GitHub!")
