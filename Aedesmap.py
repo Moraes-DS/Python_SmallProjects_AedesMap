@@ -1,4 +1,4 @@
-# Aedesmap_V18_periodo.py
+# Aedesmap.py
 # ----------------------------------------------------------------
 # Versão V18: mesmo que V17, mas agora inclui de volta a parte de
 # filtragem por período (--inicio / --fim / --ultimos_dias).
@@ -223,3 +223,26 @@ folium.LayerControl().add_to(m)
 # Note que alteramos o nome do arquivo de saída apenas para distinguir a versão de período:
 m.save("mapa_calor_ubs.html")
 print("✔  mapa_calor_ubs.html pronto — abra no navegador.")
+
+# ------------------------------------------------------------------------------------------
+# 11 - COMMITA AUTOMATICAMENTE NO GITHUB PARA CAPTURA PELO VERCEL
+# ------------------------------------------------------------------------------------------
+
+import os
+import git
+
+repo_path = "/caminho/para/seu/repositorio/local"
+html_file = "mapa_de_calor.html"
+
+# Inicializa o repositório Git local
+repo = git.Repo(repo_path)
+
+# Adiciona o arquivo ao commit
+repo.index.add([html_file])
+repo.index.commit("Atualizando mapa de calor")
+
+# Faz o push para o repositório remoto
+origin = repo.remote(name="origin")
+origin.push()
+
+print("HTML atualizado no GitHub!")
