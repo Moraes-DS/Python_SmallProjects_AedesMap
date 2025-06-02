@@ -1,7 +1,9 @@
-# Aedesmap_V19.py
+# Aedesmap.py
 # ----------------------------------------------------------------
-# Versão V19: adiciona geocodificação de registros sem latitude/longitude,
-# mantendo todas as funcionalidades anteriores (filtro de período, heatmap, tabela).
+# Versão V18: mesmo que V17, mas agora inclui de volta a parte de
+# filtragem por período (--inicio / --fim / --ultimos_dias).
+# Nenhum outro trecho do V17 foi alterado; apenas adicionamos o parsing
+# e o filtro de datas antes de gerar o mapa.
 # ----------------------------------------------------------------
 
 import argparse
@@ -10,11 +12,6 @@ import geopandas as gpd
 import folium
 from folium.plugins import HeatMap
 from datetime import datetime, timedelta
-
-# → Novas dependências para geocodificação
-from geopy.geocoders import Nominatim
-from geopy.extra.rate_limiter import RateLimiter
-import time
 
 OCORRE_JSON = "ocorrencias_SP_chatbot_REAL_v5.json"
 UBS_GEOJSON = "ubs_SP_oficiais.geojson"
@@ -60,44 +57,7 @@ args = parser.parse_args()
 # 1️⃣ LEITURA DOS DADOS DE OCORRÊNCIA
 df = pd.read_json(OCORRE_JSON)
 
-# ——————————————————————————————————————————
-# 1a️⃣ Geocodificação de registros sem Latitude/Longitude
-# ----------------------------------------------------------------
-# Verifica se existe coluna "Endereco" e se “Latitude” ou “Longitude” estão ausentes (NaN ou None).
-# Para cada linha sem coordenadas, tenta geocodificar via Nominatim a partir do campo "Endereco",
-# atribuindo latitude e longitude ao DataFrame.
-#
-if "Endereco" not in df.columns:
-    raise ValueError("Coluna 'Endereco' não encontrada no JSON de ocorrências, necessária para geocodificação.")
-
-# Inicializa o geocodificador com RateLimiter para evitar bloqueios por excesso de requisições.
-geolocator = Nominatim(user_agent="aedesmap_geocoder")
-geocode = RateLimiter(geolocator.geocode, min_delay_seconds=1)
-
-# Se não houver coluna "Latitude" ou "Longitude", cria-as preenchidas com NaN para uniformizar.
-if "Latitude" not in df.columns:
-    df["Latitude"] = pd.NA
-if "Longitude" not in df.columns:
-    df["Longitude"] = pd.NA
-
-# Itera sobre as linhas que necessitam de geocodificação
-for idx, row in df[df["Latitude"].isna() | df["Longitude"].isna()].iterrows():
-    endereco = row["Endereco"]
-    if pd.isna(endereco) or endereco.strip() == "":
-        # Se não houver endereço, pula este registro
-        continue
-    try:
-        loc = geocode(endereco)
-    except Exception:
-        loc = None
-    # Se obteve resultado, preenche colunas
-    if loc:
-        df.at[idx, "Latitude"] = loc.latitude
-        df.at[idx, "Longitude"] = loc.longitude
-    # Pequena pausa para evitar sobrecarga caso RateLimiter não funcione como esperado
-    time.sleep(0.2)
-
-# 1b️⃣ Garante que a coluna Data_interacao seja datetime
+# Garantir que a coluna Data_interacao seja datetime
 if "Data_interacao" not in df.columns:
     raise ValueError("Não encontrei a coluna 'Data_interacao' no JSON de ocorrências.")
 df["Data_interacao"] = pd.to_datetime(df["Data_interacao"])
