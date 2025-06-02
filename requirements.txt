@@ -1,0 +1,34 @@
+# Dependências de Python (precisam ser instaladas antes de executar o script. Ex. pip install pandas)
+pandas
+geopandas
+folium
+rtree
+pyogrio
+shapely
+
+Explicação:
+# leitura/escrita de JSON e manipulação tabular
+pandas>=2.0
+
+# manipulação de geometrias, GeoDataFrame e spatial join
+geopandas>=0.14
+
+# necessário para os joins espaciais (sjoin). Se não for possível instalar, usar pygeos.
+rtree>=1.0          
+
+# Interface com os shapefiles (OGR/pyogrio) e projeções
+pyogrio>=0.7
+
+# para o HeatMap / Folium
+folium>=0.14
+
+# opcional, mas recomendo para performance de geometrias grandes:
+shapely>=2.0
+
+# Arquivos essenciais (devem estar na mesma pasta de execução)
+- ocorrencias_SP_chatbot_REAL_v5.json
+- ubs_SP_oficiais.geojson
+- SIRGAS_SHP_distrito.shp
+- SIRGAS_SHP_distrito.shx
+- SIRGAS_SHP_distrito.dbf
+- SIRGAS_SHP_distrito.prj  
