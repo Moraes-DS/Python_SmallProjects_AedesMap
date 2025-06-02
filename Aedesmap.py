@@ -221,8 +221,8 @@ m.get_root().html.add_child(Element(html_table))
 # 🔟 LayerControl e salvamento
 folium.LayerControl().add_to(m)
 # Note que alteramos o nome do arquivo de saída apenas para distinguir a versão de período:
-m.save("mapa_calor_ubs.html")
-print("✔  mapa_calor_ubs.html pronto — abra no navegador.")
+m.save("index.html")
+print("✔  index.html pronto — abra no navegador.")
 
 # ------------------------------------------------------------------------------------------
 # 11 - COMMITA AUTOMATICAMENTE NO GIT PARA CAPTURA PELO VERCEL
@@ -232,7 +232,7 @@ import os
 import git
 
 repo_path = "D:/DOCUMENTOS/GITHUB/AEDESMAP"
-html_file = "mapa_calor_ubs.html"
+html_file = "index.html"
 
 # Inicializa o repositório Git local
 repo = git.Repo(repo_path)
