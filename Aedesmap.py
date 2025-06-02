@@ -225,14 +225,14 @@ m.save("mapa_calor_ubs.html")
 print("✔  mapa_calor_ubs.html pronto — abra no navegador.")
 
 # ------------------------------------------------------------------------------------------
-# 11 - COMMITA AUTOMATICAMENTE NO GITHUB PARA CAPTURA PELO VERCEL
+# 11 - COMMITA AUTOMATICAMENTE NO GIT PARA CAPTURA PELO VERCEL
 # ------------------------------------------------------------------------------------------
 
 import os
 import git
 
-repo_path = "/caminho/para/seu/repositorio/local"
-html_file = "mapa_de_calor.html"
+repo_path = "D:/DOCUMENTOS/GITHUB/AEDESMAP"
+html_file = "mapa_calor_ubs.html"
 
 # Inicializa o repositório Git local
 repo = git.Repo(repo_path)
