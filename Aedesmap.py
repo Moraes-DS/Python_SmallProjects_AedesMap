@@ -1,10 +1,8 @@
-# Aedesmap_V19.py
+# Aedesmap_V20.py
 # ----------------------------------------------------------------
-# Versão V19: além das funcionalidades existentes (heatmap, 
-# marcadores, tabela de bairros, commit Git), agora:
-#  - normaliza nomes de distritos (removendo acentos),
-#  - usa predicate="intersects" no spatial join
-#  - aplica um buffer minúsculo em pontos para capturar bordas.
+# Versão V20: a tabela que aparecia como “Ocorrências por Bairro”
+# agora passa a ser “Ocorrências por Distrito”, incluindo apenas
+# os distritos realmente presentes no shapefile (removemos “Aclimação”).
 # ----------------------------------------------------------------
 
 import argparse
@@ -136,10 +134,10 @@ gdf_dst_full = gpd.read_file(DST_SHP).set_crs(31983).to_crs(4326)
 # Normaliza o nome do distrito para remover acento
 gdf_dst_full["ds_nome_norm"] = gdf_dst_full["ds_nome"].apply(normalize_str)
 
-# Definir quais bairros queremos
-TARGETS = ["CAMBUCI", "ACLIMACAO", "LIBERDADE", "IPIRANGA"]
+# Definir quais distritos queremos (removemos “ACLIMACAO” porque não existe como distrito)
+TARGETS = ["CAMBUCI", "LIBERDADE", "IPIRANGA"]
 
-# Filtrar apenas esses quatro (já normalizados)
+# Filtrar apenas esses três (já normalizados)
 gdf_bairros = (
     gdf_dst_full[gdf_dst_full["ds_nome_norm"].isin(TARGETS)]
     .rename(columns={"ds_nome_norm": "bairro"})
@@ -186,7 +184,7 @@ else:
     gdfU_vis = gpd.GeoDataFrame(columns=gdfU.columns)
 
 # ----------------------------------------------------------------
-# 8️⃣ CONTAGEM “OCORRÊNCIAS POR BAIRRO” VIA SPATIAL JOIN
+# 8️⃣ CONTAGEM “OCORRÊNCIAS POR DISTRITO” VIA SPATIAL JOIN
 # ----------------------------------------------------------------
 tabela_contagens = {}
 if not df.empty:
@@ -209,7 +207,7 @@ if not df.empty:
 else:
     contagem_bairros = {}
 
-# Garantir que aparece cada bairro, mesmo que zero
+# Garantir que aparece cada distrito, mesmo que zero
 for b in TARGETS:
     tabela_contagens[b] = int(contagem_bairros.get(b, 0))
 
@@ -225,10 +223,10 @@ html_table = """
     border: 1px solid #444;
     font-size: 12px;
 ">
-  <b>Ocorrências por Bairro</b>
+  <b>Ocorrências por Distrito</b>
   <table style="border-collapse: collapse; margin-top: 4px;">
     <tr>
-      <th style="padding: 2px 6px; border-bottom: 1px solid #666;">Bairro</th>
+      <th style="padding: 2px 6px; border-bottom: 1px solid #666;">Distrito</th>
       <th style="padding: 2px 6px; border-bottom: 1px solid #666;">Qtd.</th>
     </tr>
 """
@@ -241,7 +239,7 @@ for b in TARGETS:
     </tr>
     """
 
-# Linha “Total”
+# Linha “Total” no final
 total_geral = sum(tabela_contagens.values())
 html_table += f"""
     <tr>
