@@ -195,13 +195,12 @@ if not df.empty:
         crs="EPSG:4326"
     )
     # Aplica um buffer de 0.0001° (~11m) para capturar pontos colados na borda
-    gdf_occ["geometry_buffered"] = gdf_occ.geometry.buffer(0.0001)
-
+    
     joined = gpd.sjoin(
-        gdf_occ.set_geometry("geometry_buffered"),
+        gdf_occ,
         gdf_bairros,
         how="left",
-        predicate="intersects",
+        predicate="within",
     )
     contagem_bairros = joined["bairro"].value_counts(dropna=False).to_dict()
 else:
