@@ -1,2 +1,2 @@
 # Python_SmallProjects_AedesMap
-Cria um mapa de calor das ocorrências de suspeita de doentes de Dengue, Zika e Chikungunya na cidade de São Paulo, a partir de uma base de dados de ocorrências. 
+Script Python que lê ocorrências sintéticas de dengue, zika e chikungunya em São Paulo, cria um HeatMap separado por doença utilizando Folium, adiciona marcadores das UBS próximas às zonas de incidência e gera um HTML interativo disponibilizado via Vercel. Inclui também contagem de casos por distrito exibida como tabela sobre o mapa. Link para mapa de calor: python-small-projects-aedes-map-1um6-lhauojw2o.vercel.app
